@@ -33,7 +33,10 @@ module Fluent
       def topic(topic_name)
         return @topics[topic_name] if @topics.has_key? topic_name
 
-        client = @pubsub.topic topic_name
+        client = @pubsub.topic topic_name, async: {
+	  :max_bytes => 1000000,
+	  :max_messages => 20
+	}
         if client.nil? && @autocreate_topic
           client = @pubsub.create_topic topic_name
         end
@@ -46,11 +49,15 @@ module Fluent
       end
 
       def publish(topic_name, messages)
-        topic(topic_name).publish do |batch|
-          messages.each do |m|
-            batch.publish m.message, m.attributes
-          end
-        end
+	messages.each do |m|
+	  topic(topic_name).publish_async m.message, m.attributes do |result|
+	    if result.succeded?
+	      puts 'async messages success'
+	    else
+	      puts 'async messages fail'
+	    end
+	  end
+	end
       rescue Google::Cloud::UnavailableError, Google::Cloud::DeadlineExceededError, Google::Cloud::InternalError => ex
         raise RetryableError.new "Google api returns error:#{ex.class.to_s} message:#{ex.to_s}"
       end
